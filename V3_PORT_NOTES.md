@@ -107,10 +107,12 @@ resolved per call with `backstop_token(tier, pool)`. `c_join_pool` and
   into the contract spec, so without this the ABI would reference an undefined
   type and the CLI and JS bindings couldn't encode the argument.
 - The constructor is now `(owner, manager, admin_scope, backstops, pools)`.
+- **`js-sdk/` is removed.** It was stale generated bindings (v2 ABI) that nothing
+  built or used. Generate a client from the WASM where it's needed:
+  `stellar contract bindings typescript --wasm target/wasm32v1-none/optimized/backstop_manager.wasm --output-dir <dir>`.
 
 ### Open items
 
-- `js-sdk/` still has the v2 bindings. Regenerate it from the new WASM.
 - Vendored v3 WASMs are local builds of `5d055ca` (see `src/dependencies/README.md`).
   Swap in the tagged release artifacts once they exist.
 - New v3 entry points (`user_balance(tier, ..)`, `force_*`, `donate`) aren't
