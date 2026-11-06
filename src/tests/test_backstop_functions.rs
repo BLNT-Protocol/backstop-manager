@@ -6,12 +6,21 @@ use soroban_sdk::{
 };
 
 use crate::testutils::{
-    create_backstop_bootstrapper, create_backstop_manager_wasm, create_blend_contracts,
-    EnvTestUtils, ONE_DAY_LEDGERS,
+    bstop_tier, create_backstop_manager_wasm, create_blnt_contracts, EnvTestUtils, ManagerTier,
+    ONE_DAY_LEDGERS,
 };
 
 #[test]
-fn test_execute_backstop_functions() {
+fn test_execute_backstop_functions_first_loss() {
+    run_backstop_functions(ManagerTier::FirstLoss);
+}
+
+#[test]
+fn test_execute_backstop_functions_second_loss() {
+    run_backstop_functions(ManagerTier::SecondLoss);
+}
+
+fn run_backstop_functions(tier: ManagerTier) {
     let e = Env::new_with_config(EnvTestConfig {
         capture_snapshot_at_drop: false,
     });
@@ -23,10 +32,9 @@ fn test_execute_backstop_functions() {
     let bombadil = Address::generate(&e);
     let frodo = Address::generate(&e);
     let samwise = Address::generate(&e);
-    let usdc = e.register_stellar_asset_contract_v2(bombadil.clone());
-    let blnd = e.register_stellar_asset_contract_v2(bombadil.clone());
-    let (contracts, pool) = create_blend_contracts(&e, &bombadil, &blnd.address(), &usdc.address());
-    let bootstrapper = create_backstop_bootstrapper(&e, &contracts);
+    let (contracts, pool) = create_blnt_contracts(&e, &bombadil);
+    let b_tier = bstop_tier(&tier);
+    let backstop_token = contracts.tier_lp(&b_tier);
 
     let random_address = Address::generate(&e);
 
@@ -36,17 +44,13 @@ fn test_execute_backstop_functions() {
         &frodo,
         &samwise,
         &0,
-        &bootstrapper.address,
-        &contracts.backstop_token.address,
         &vec![&e, contracts.backstop.address.clone()],
         &vec![&e, pool.clone()],
     );
 
     // bombadil sent LP tokens to the backstop manager contract
     let lp_mint_amount = 1_000_0000000;
-    contracts
-        .backstop_token
-        .transfer(&bombadil, &manager_client.address, &lp_mint_amount);
+    backstop_token.transfer(&bombadil, &manager_client.address, &lp_mint_amount);
 
     let deposit_amount = lp_mint_amount / 2;
 
@@ -68,6 +72,7 @@ fn test_execute_backstop_functions() {
                     &e,
                     frodo.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     random_address.into_val(&e),
                     deposit_amount.into_val(&e),
                 ],
@@ -77,6 +82,7 @@ fn test_execute_backstop_functions() {
         .try_b_deposit(
             &frodo,
             &contracts.backstop.address,
+            &tier,
             &random_address,
             &deposit_amount,
         );
@@ -97,17 +103,24 @@ fn test_execute_backstop_functions() {
                     &e,
                     frodo.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     deposit_amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .b_deposit(&frodo, &contracts.backstop.address, &pool, &deposit_amount);
+        .b_deposit(
+            &frodo,
+            &contracts.backstop.address,
+            &tier,
+            &pool,
+            &deposit_amount,
+        );
     assert_eq!(e.auths()[0].0, frodo); // assert require_auth exists
     let backstop_bal_0 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert_eq!(deposit_amount, backstop_bal_0.shares);
 
     // - allow some time to pass to accrue emissions
@@ -126,17 +139,24 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     min_lp_amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .b_claim(&samwise, &contracts.backstop.address, &pool, &min_lp_amount);
+        .b_claim(
+            &samwise,
+            &contracts.backstop.address,
+            &tier,
+            &pool,
+            &min_lp_amount,
+        );
     assert_eq!(e.auths()[0].0, samwise); // assert require_auth exists
     let backstop_bal_1 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert!(backstop_bal_1.shares > backstop_bal_0.shares);
 
     // deposit - validate scope 0 cannot invoke scope 1 functions
@@ -151,6 +171,7 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     deposit_amount.into_val(&e),
                 ],
@@ -160,6 +181,7 @@ fn test_execute_backstop_functions() {
         .try_b_deposit(
             &samwise,
             &contracts.backstop.address,
+            &tier,
             &pool,
             &deposit_amount,
         );
@@ -201,6 +223,7 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     deposit_amount.into_val(&e),
                 ],
@@ -210,13 +233,14 @@ fn test_execute_backstop_functions() {
         .b_deposit(
             &samwise,
             &contracts.backstop.address,
+            &tier,
             &pool,
             &deposit_amount,
         );
     assert_eq!(e.auths()[0].0, samwise); // assert require_auth exists
     let backstop_bal_2 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert_eq!(
         deposit_amount + backstop_bal_1.shares,
         backstop_bal_2.shares
@@ -236,13 +260,14 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     random_address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     q4w_amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .try_b_queue_withdrawal(&samwise, &random_address, &pool, &q4w_amount);
+        .try_b_queue_withdrawal(&samwise, &random_address, &tier, &pool, &q4w_amount);
     assert_eq!(q4w_invalid.err(), Some(Ok(Error::from_contract_error(101))));
 
     // q4w - as the manager
@@ -257,17 +282,24 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     q4w_amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .b_queue_withdrawal(&samwise, &contracts.backstop.address, &pool, &q4w_amount);
+        .b_queue_withdrawal(
+            &samwise,
+            &contracts.backstop.address,
+            &tier,
+            &pool,
+            &q4w_amount,
+        );
     assert_eq!(e.auths()[0].0, samwise); // assert require_auth exists
     let backstop_bal_3 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert_eq!(backstop_bal_2.shares - q4w_amount, backstop_bal_3.shares);
     assert_eq!(backstop_bal_3.q4w.len(), 1);
     let q4w = backstop_bal_3.q4w.get_unchecked(0);
@@ -290,6 +322,7 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     random_address.into_val(&e),
                     dequeue_amount.into_val(&e),
                 ],
@@ -299,6 +332,7 @@ fn test_execute_backstop_functions() {
         .try_b_dequeue_withdrawal(
             &samwise,
             &contracts.backstop.address,
+            &tier,
             &random_address,
             &dequeue_amount,
         );
@@ -319,6 +353,7 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     dequeue_amount.into_val(&e),
                 ],
@@ -328,13 +363,14 @@ fn test_execute_backstop_functions() {
         .b_dequeue_withdrawal(
             &samwise,
             &contracts.backstop.address,
+            &tier,
             &pool,
             &dequeue_amount,
         );
     assert_eq!(e.auths()[0].0, samwise); // assert require_auth exists
     let backstop_bal_4 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert_eq!(
         backstop_bal_2.shares - dequeue_amount,
         backstop_bal_4.shares
@@ -359,13 +395,20 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     q4w.amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .try_b_withdraw(&samwise, &contracts.backstop.address, &pool, &q4w.amount);
+        .try_b_withdraw(
+            &samwise,
+            &contracts.backstop.address,
+            &tier,
+            &pool,
+            &q4w.amount,
+        );
     assert_eq!(
         withdraw_scope_1.err(),
         Some(Ok(Error::from_contract_error(4)))
@@ -403,20 +446,21 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     random_address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     q4w.amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .try_b_withdraw(&samwise, &random_address, &pool, &q4w.amount);
+        .try_b_withdraw(&samwise, &random_address, &tier, &pool, &q4w.amount);
     assert_eq!(
         withdraw_invalid.err(),
         Some(Ok(Error::from_contract_error(101)))
     );
 
     // withdraw - as the manager
-    let backstop_token_bal_0 = contracts.backstop_token.balance(&manager_client.address);
+    let backstop_token_bal_0 = backstop_token.balance(&manager_client.address);
     e.set_auths(&[]);
     manager_client
         .mock_auths(&[MockAuth {
@@ -428,22 +472,29 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     q4w.amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .b_withdraw(&samwise, &contracts.backstop.address, &pool, &q4w.amount);
+        .b_withdraw(
+            &samwise,
+            &contracts.backstop.address,
+            &tier,
+            &pool,
+            &q4w.amount,
+        );
     assert_eq!(e.auths()[0].0, samwise); // assert require_auth exists
     let backstop_bal_5 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert_eq!(backstop_bal_4.shares, backstop_bal_5.shares);
     assert_eq!(0, backstop_bal_5.q4w.len());
     assert_eq!(
         backstop_token_bal_0 + q4w.amount,
-        contracts.backstop_token.balance(&manager_client.address)
+        backstop_token.balance(&manager_client.address)
     );
 
     // - allow some time to pass to accrue emissions
@@ -461,16 +512,23 @@ fn test_execute_backstop_functions() {
                     &e,
                     samwise.into_val(&e),
                     contracts.backstop.address.into_val(&e),
+                    tier.into_val(&e),
                     pool.into_val(&e),
                     min_lp_amount.into_val(&e),
                 ],
                 sub_invokes: &[],
             },
         }])
-        .b_claim(&samwise, &contracts.backstop.address, &pool, &min_lp_amount);
+        .b_claim(
+            &samwise,
+            &contracts.backstop.address,
+            &tier,
+            &pool,
+            &min_lp_amount,
+        );
     assert_eq!(e.auths()[0].0, samwise); // assert require_auth exists
     let backstop_bal_6 = contracts
         .backstop
-        .user_balance(&pool, &manager_client.address);
+        .user_balance(&b_tier, &pool, &manager_client.address);
     assert!(backstop_bal_6.shares > backstop_bal_5.shares);
 }

@@ -4,6 +4,7 @@ pub mod contract;
 mod dependencies;
 mod errors;
 mod storage;
+pub mod types;
 
 #[cfg(test)]
 extern crate std;

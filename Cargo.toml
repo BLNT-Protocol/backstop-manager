@@ -1,9 +1,10 @@
 [package]
 name = "backstop-manager"
-version = "1.0.0"
+version = "2.0.0"
 authors = ["Script3 Ltd. <gm@script3.io>"]
 license = "AGPL-3.0"
 edition = "2021"
+rust-version = "1.91.1"
 publish = false
 
 [lib]
@@ -14,12 +15,10 @@ doctest = false
 testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
-soroban-sdk = "22.0.7"
-blend-contract-sdk = "2.22.0"
+soroban-sdk = "=27.0.3"
 
 [dev-dependencies]
-soroban-sdk = { version = "22.0.7", features = ["testutils"] }
-blend-contract-sdk = { version = "2.22.0", features = ["testutils"] }
+soroban-sdk = { version = "=27.0.3", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"

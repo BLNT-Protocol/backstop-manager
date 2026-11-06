@@ -26,8 +26,6 @@ const OWNER_KEY: &str = "Owner";
 const MANAGER_KEY: &str = "Manager";
 const BACKSTOPS_KEY: &str = "Bstop";
 const POOLS_KEY: &str = "Pools";
-const BACKSTOP_BOOTSTRAPPER_KEY: &str = "BstopBoot";
-const BACKSTOP_TOKEN_KEY: &str = "BstopTkn";
 
 /********** Ledger Thresholds **********/
 
@@ -52,7 +50,7 @@ pub fn get_owner(e: &Env) -> Address {
 pub fn set_owner(e: &Env, owner: &Address) {
     e.storage()
         .instance()
-        .set::<Symbol, Address>(&Symbol::new(e, OWNER_KEY), &owner);
+        .set::<Symbol, Address>(&Symbol::new(e, OWNER_KEY), owner);
 }
 
 /// Get the manager for the contract
@@ -70,36 +68,6 @@ pub fn set_manager(e: &Env, manager: &Manager) {
         .set::<Symbol, Manager>(&Symbol::new(e, MANAGER_KEY), manager);
 }
 
-/// Get the backstop bootstrapper address
-pub fn get_backstop_bootstrapper(e: &Env) -> Address {
-    e.storage()
-        .instance()
-        .get::<Symbol, Address>(&Symbol::new(e, BACKSTOP_BOOTSTRAPPER_KEY))
-        .unwrap_optimized()
-}
-
-/// Set the backstop bootstrapper address
-pub fn set_backstop_bootstrapper(e: &Env, bootstrapper: Address) {
-    e.storage()
-        .instance()
-        .set::<Symbol, Address>(&Symbol::new(e, BACKSTOP_BOOTSTRAPPER_KEY), &bootstrapper);
-}
-
-/// Get the backstop token
-pub fn get_backstop_token(e: &Env) -> Address {
-    e.storage()
-        .instance()
-        .get::<Symbol, Address>(&Symbol::new(e, BACKSTOP_TOKEN_KEY))
-        .unwrap_optimized()
-}
-
-/// Set the backstop token
-pub fn set_backstop_token(e: &Env, bootstrapper: Address) {
-    e.storage()
-        .instance()
-        .set::<Symbol, Address>(&Symbol::new(e, BACKSTOP_TOKEN_KEY), &bootstrapper);
-}
-
 /// Get an array of all valid backstops the vault can interact with
 pub fn get_valid_backstops(e: &Env) -> Vec<Address> {
     let key = Symbol::new(e, BACKSTOPS_KEY);
@@ -114,7 +82,7 @@ pub fn set_valid_backstops(e: &Env, backstop: &Vec<Address>) {
     let key = Symbol::new(e, BACKSTOPS_KEY);
     e.storage()
         .instance()
-        .set::<Symbol, Vec<Address>>(&key, &backstop);
+        .set::<Symbol, Vec<Address>>(&key, backstop);
 }
 
 /// Get an array of all valid pools the vault can interact with
@@ -131,5 +99,5 @@ pub fn set_valid_pools(e: &Env, pools: &Vec<Address>) {
     let key = Symbol::new(e, POOLS_KEY);
     e.storage()
         .instance()
-        .set::<Symbol, Vec<Address>>(&key, &pools);
+        .set::<Symbol, Vec<Address>>(&key, pools);
 }
