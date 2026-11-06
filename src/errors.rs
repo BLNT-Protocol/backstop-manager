@@ -18,5 +18,4 @@ pub enum BackstopManagerErrors {
     ContractListOverMax = 100,
     InvalidContractAddress = 101,
     InvalidScope = 102,
-    InvalidTokenIndex = 103,
 }

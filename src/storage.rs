@@ -26,8 +26,6 @@ const OWNER_KEY: &str = "Owner";
 const MANAGER_KEY: &str = "Manager";
 const BACKSTOPS_KEY: &str = "Bstop";
 const POOLS_KEY: &str = "Pools";
-const BACKSTOP_BOOTSTRAPPER_KEY: &str = "BstopBoot";
-const BACKSTOP_TOKEN_KEY: &str = "BstopTkn";
 
 /********** Ledger Thresholds **********/
 
@@ -68,36 +66,6 @@ pub fn set_manager(e: &Env, manager: &Manager) {
     e.storage()
         .instance()
         .set::<Symbol, Manager>(&Symbol::new(e, MANAGER_KEY), manager);
-}
-
-/// Get the backstop bootstrapper address
-pub fn get_backstop_bootstrapper(e: &Env) -> Address {
-    e.storage()
-        .instance()
-        .get::<Symbol, Address>(&Symbol::new(e, BACKSTOP_BOOTSTRAPPER_KEY))
-        .unwrap_optimized()
-}
-
-/// Set the backstop bootstrapper address
-pub fn set_backstop_bootstrapper(e: &Env, bootstrapper: Address) {
-    e.storage()
-        .instance()
-        .set::<Symbol, Address>(&Symbol::new(e, BACKSTOP_BOOTSTRAPPER_KEY), &bootstrapper);
-}
-
-/// Get the backstop token
-pub fn get_backstop_token(e: &Env) -> Address {
-    e.storage()
-        .instance()
-        .get::<Symbol, Address>(&Symbol::new(e, BACKSTOP_TOKEN_KEY))
-        .unwrap_optimized()
-}
-
-/// Set the backstop token
-pub fn set_backstop_token(e: &Env, bootstrapper: Address) {
-    e.storage()
-        .instance()
-        .set::<Symbol, Address>(&Symbol::new(e, BACKSTOP_TOKEN_KEY), &bootstrapper);
 }
 
 /// Get an array of all valid backstops the vault can interact with
