@@ -3,6 +3,7 @@
 pub mod contract;
 mod dependencies;
 mod errors;
+mod events;
 mod storage;
 pub mod types;
 

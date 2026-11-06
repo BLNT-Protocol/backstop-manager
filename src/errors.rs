@@ -18,4 +18,8 @@ pub enum BackstopManagerErrors {
     ContractListOverMax = 100,
     InvalidContractAddress = 101,
     InvalidScope = 102,
+    InvalidOwner = 103,
+    NoPendingOwner = 104,
+    OwnerTransferNotReady = 105,
+    OwnerProposalExpired = 106,
 }

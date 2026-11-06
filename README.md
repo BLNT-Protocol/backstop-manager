@@ -5,6 +5,7 @@ Contract that allows an owner to delegate management for a backstop deposit to a
 This version targets the BLNT v3 backstop. Every backstop and Comet action takes a `BackstopTier` (`FirstLoss`, `SecondLoss`, `ThirdLoss`), and the token for that tier is looked up from the backstop with `backstop_token(tier, pool)`. The manager is not bound to a single backstop token.
 
 The owner can:
+* Transfer ownership to a new address in two steps: the owner calls `propose_owner`, and the new owner calls `accept_owner` in a later ledger, within one week. The owner can cancel a pending proposal, and the proposed owner can decline it, with `cancel_owner_proposal`. The manager is unchanged by an ownership transfer.
 * Manage the manager key, including reducing the scope in which they can act
 * Add/remove pools that the contract can move funds between
 * Add/remove backstops that the contract can interact with

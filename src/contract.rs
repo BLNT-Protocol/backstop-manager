@@ -4,7 +4,8 @@ use crate::{
         comet::Client as CometClient,
     },
     errors::BackstopManagerErrors,
-    storage::{self, Manager},
+    events::{OwnerAccepted, OwnerCancelled, OwnerProposed},
+    storage::{self, Manager, PendingOwner},
     types::BackstopTier,
 };
 use soroban_sdk::{
@@ -16,6 +17,9 @@ use soroban_sdk::{
 };
 
 const MAX_VALID_LIST_LEN: u32 = 4;
+
+/// How long an owner proposal can be accepted for, in seconds (one week)
+const OWNER_PROPOSAL_EXPIRY: u64 = 7 * 24 * 60 * 60;
 
 #[contract]
 pub struct BackstopManager;
@@ -79,6 +83,12 @@ impl BackstopManager {
         storage::get_manager(&e)
     }
 
+    /// Get the pending owner proposal, if any. An expired proposal is still returned
+    /// until it is replaced or cancelled.
+    pub fn pending_owner(e: Env) -> Option<PendingOwner> {
+        storage::get_pending_owner(&e)
+    }
+
     /// Get the backstops this contract can interact with
     pub fn backstops(e: Env) -> Vec<Address> {
         storage::get_valid_backstops(&e)
@@ -104,6 +114,93 @@ impl BackstopManager {
 
         let token_client = TokenClient::new(&e, &token);
         token_client.transfer(&e.current_contract_address(), &to, &amount);
+    }
+
+    /// (Only Owner) Propose a new owner for the contract. The owner does not change
+    /// until `new_owner` calls `accept_owner`. Replaces any pending proposal.
+    ///
+    /// ### Arguments
+    /// * `new_owner` - The address of the proposed owner
+    ///
+    /// ### Errors
+    /// * InvalidOwner - `new_owner` is the current owner or this contract
+    pub fn propose_owner(e: Env, new_owner: Address) {
+        let owner = storage::get_owner(&e);
+        owner.require_auth();
+        storage::extend_instance(&e);
+
+        if new_owner == owner || new_owner == e.current_contract_address() {
+            panic_with_error!(&e, BackstopManagerErrors::InvalidOwner);
+        }
+
+        storage::set_pending_owner(
+            &e,
+            &PendingOwner {
+                id: new_owner.clone(),
+                ledger: e.ledger().sequence(),
+                timestamp: e.ledger().timestamp(),
+            },
+        );
+        OwnerProposed { owner, new_owner }.publish(&e);
+    }
+
+    /// (Only Pending Owner) Accept ownership of the contract
+    ///
+    /// ### Errors
+    /// * NoPendingOwner - There is no pending proposal
+    /// * OwnerTransferNotReady - Called in the same ledger as the proposal
+    /// * OwnerProposalExpired - Called more than one week after the proposal
+    pub fn accept_owner(e: Env) {
+        let pending = match storage::get_pending_owner(&e) {
+            Some(pending) => pending,
+            None => panic_with_error!(&e, BackstopManagerErrors::NoPendingOwner),
+        };
+        pending.id.require_auth();
+        storage::extend_instance(&e);
+
+        if e.ledger().sequence() <= pending.ledger {
+            panic_with_error!(&e, BackstopManagerErrors::OwnerTransferNotReady);
+        }
+        if e.ledger().timestamp() > pending.timestamp + OWNER_PROPOSAL_EXPIRY {
+            panic_with_error!(&e, BackstopManagerErrors::OwnerProposalExpired);
+        }
+
+        let old_owner = storage::get_owner(&e);
+        storage::set_owner(&e, &pending.id);
+        storage::del_pending_owner(&e);
+        OwnerAccepted {
+            new_owner: pending.id,
+            old_owner,
+        }
+        .publish(&e);
+    }
+
+    /// (Owner or Pending Owner) Cancel the pending owner proposal. The owner can cancel
+    /// it, and the pending owner can decline it.
+    ///
+    /// ### Arguments
+    /// * `from` - The caller of the function
+    ///
+    /// ### Errors
+    /// * NoPendingOwner - There is no pending proposal
+    /// * UnauthorizedError - `from` is neither the owner nor the pending owner
+    pub fn cancel_owner_proposal(e: Env, from: Address) {
+        from.require_auth();
+        let pending = match storage::get_pending_owner(&e) {
+            Some(pending) => pending,
+            None => panic_with_error!(&e, BackstopManagerErrors::NoPendingOwner),
+        };
+        if from != pending.id && from != storage::get_owner(&e) {
+            panic_with_error!(&e, BackstopManagerErrors::UnauthorizedError);
+        }
+        storage::extend_instance(&e);
+
+        storage::del_pending_owner(&e);
+        OwnerCancelled {
+            caller: from,
+            new_owner: pending.id,
+        }
+        .publish(&e);
     }
 
     /// (Only Owner) Set the manager for the contract

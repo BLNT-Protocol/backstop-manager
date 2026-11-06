@@ -13,6 +13,17 @@ pub struct Manager {
     pub scope: u32,
 }
 
+/// A proposed ownership transfer awaiting acceptance
+#[contracttype]
+pub struct PendingOwner {
+    /// The proposed owner
+    pub id: Address,
+    /// The ledger sequence the proposal was made in
+    pub ledger: u32,
+    /// The ledger timestamp the proposal was made at
+    pub timestamp: u64,
+}
+
 /********** Ledger Thresholds **********/
 
 const ONE_DAY_LEDGERS: u32 = 17280; // assumes 5 seconds per ledger
@@ -26,6 +37,7 @@ const OWNER_KEY: &str = "Owner";
 const MANAGER_KEY: &str = "Manager";
 const BACKSTOPS_KEY: &str = "Bstop";
 const POOLS_KEY: &str = "Pools";
+const PENDING_OWNER_KEY: &str = "PendOwner";
 
 /********** Ledger Thresholds **********/
 
@@ -51,6 +63,27 @@ pub fn set_owner(e: &Env, owner: &Address) {
     e.storage()
         .instance()
         .set::<Symbol, Address>(&Symbol::new(e, OWNER_KEY), owner);
+}
+
+/// Get the pending owner proposal, if one exists
+pub fn get_pending_owner(e: &Env) -> Option<PendingOwner> {
+    e.storage()
+        .instance()
+        .get::<Symbol, PendingOwner>(&Symbol::new(e, PENDING_OWNER_KEY))
+}
+
+/// Set the pending owner proposal
+pub fn set_pending_owner(e: &Env, pending: &PendingOwner) {
+    e.storage()
+        .instance()
+        .set::<Symbol, PendingOwner>(&Symbol::new(e, PENDING_OWNER_KEY), pending);
+}
+
+/// Remove the pending owner proposal
+pub fn del_pending_owner(e: &Env) {
+    e.storage()
+        .instance()
+        .remove::<Symbol>(&Symbol::new(e, PENDING_OWNER_KEY));
 }
 
 /// Get the manager for the contract
