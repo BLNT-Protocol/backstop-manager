@@ -22,4 +22,5 @@ pub enum BackstopManagerErrors {
     NoPendingOwner = 104,
     OwnerTransferNotReady = 105,
     OwnerProposalExpired = 106,
+    InvalidBps = 107,
 }
