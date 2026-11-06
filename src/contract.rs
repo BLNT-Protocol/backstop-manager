@@ -451,10 +451,10 @@ impl BackstopManager {
 /// * UnauthorizedError - The caller is not authorized to perform the action
 fn require_auth_with_scope(e: &Env, from: Address, scope: u32) {
     from.require_auth();
-    if from == storage::get_owner(&e) {
+    if from == storage::get_owner(e) {
         return;
     }
-    let manager = storage::get_manager(&e);
+    let manager = storage::get_manager(e);
     if manager.id != from || manager.scope < scope {
         panic_with_error!(&e, BackstopManagerErrors::UnauthorizedError);
     }
@@ -469,8 +469,8 @@ fn require_auth_with_scope(e: &Env, from: Address, scope: u32) {
 /// ### Errors
 /// * InvalidContractAddress - The backstop or pool address is not included in the valid lists
 fn require_backstop_and_pool_valid(e: &Env, backstop: &Address, pool_address: &Address) {
-    let backstops = storage::get_valid_backstops(&e);
-    let pools = storage::get_valid_pools(&e);
+    let backstops = storage::get_valid_backstops(e);
+    let pools = storage::get_valid_pools(e);
     if !backstops.contains(backstop) || !pools.contains(pool_address) {
         panic_with_error!(&e, BackstopManagerErrors::InvalidContractAddress);
     }

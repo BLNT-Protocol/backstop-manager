@@ -50,7 +50,7 @@ pub fn get_owner(e: &Env) -> Address {
 pub fn set_owner(e: &Env, owner: &Address) {
     e.storage()
         .instance()
-        .set::<Symbol, Address>(&Symbol::new(e, OWNER_KEY), &owner);
+        .set::<Symbol, Address>(&Symbol::new(e, OWNER_KEY), owner);
 }
 
 /// Get the manager for the contract
@@ -82,7 +82,7 @@ pub fn set_valid_backstops(e: &Env, backstop: &Vec<Address>) {
     let key = Symbol::new(e, BACKSTOPS_KEY);
     e.storage()
         .instance()
-        .set::<Symbol, Vec<Address>>(&key, &backstop);
+        .set::<Symbol, Vec<Address>>(&key, backstop);
 }
 
 /// Get an array of all valid pools the vault can interact with
@@ -99,5 +99,5 @@ pub fn set_valid_pools(e: &Env, pools: &Vec<Address>) {
     let key = Symbol::new(e, POOLS_KEY);
     e.storage()
         .instance()
-        .set::<Symbol, Vec<Address>>(&key, &pools);
+        .set::<Symbol, Vec<Address>>(&key, pools);
 }
