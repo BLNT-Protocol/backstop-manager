@@ -41,3 +41,7 @@ The manager can:
 * Withdraw funds from backstop to the manager contract (scope req. `High`)
 * Harvest its share of backstop earnings to its own address (scope req. `Low`). Earnings are the value of a backstop position above the LP tokens deposited into it, and become harvestable when withdrawn with `b_withdraw`. The manager can never harvest principal.
 * Join and/or Exit the Comet LP used by a backstop tier (scope req. `High`)
+
+## CLI
+
+`cli/manager.sh` is a menu-driven interface for joining the LP, depositing, claiming, queueing, withdrawing and harvesting. See `cli/README.md`.
