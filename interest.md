@@ -44,26 +44,25 @@ A position is identified by `(backstop, pool, tier)`. Each tier uses its
 own LP token, so principal is tracked per position and never summed across
 positions.
 
-The position is valued during `b_withdraw`, at the price per share the
-withdrawal itself used:
+The position is valued during `b_withdraw` from the tier's exact token and
+share totals immediately before withdrawal:
 
 ```
 user            = backstop.user_balance(tier, pool, contract)   // before withdrawing
 position_shares = user.shares + sum(user.q4w[i].amount)
+tier_data       = backstop.pool_data(pool).tiers[tier]
+value           = position_shares * tier_data.tokens / tier_data.shares
 returned        = backstop.withdraw(tier, contract, pool, withdrawn_shares, contract)
-value           = position_shares * returned / withdrawn_shares
 ```
 
 Queued shares are included because they still belong to the position and
 are still exposed to losses. Division rounds down, which can undervalue
-the position by a few base units, in the owner's favor.
+the position by less than one LP-token base unit, in the owner's favor.
 
-In the v3 backstop, a tier's share count includes queued shares, and
-`withdraw` returns `withdrawn_shares * tier.tokens / tier.shares` (rounded
-down), so this is the same price as valuing the position from
-`pool_data`. Using the withdrawal's price avoids calling `pool_data`,
-which values the whole pool through prices and would make `b_withdraw`
-fail whenever that valuation fails.
+Using the tier totals avoids extrapolating the rounded result of a small
+withdrawal across the full position. Because the v3 backstop exposes those
+totals through `pool_data`, `b_withdraw` requires that complete backstop-data
+query to succeed before it changes the position.
 
 ### Principal
 

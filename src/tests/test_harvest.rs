@@ -166,12 +166,6 @@ impl<'a> Harness<'a> {
         )
     }
 
-    /// The value the contract assigns to the position for a withdrawal of
-    /// `withdrawn` of `position_shares` that returned `returned` tokens
-    fn implied_value(position_shares: i128, withdrawn: i128, returned: i128) -> i128 {
-        position_shares * returned / withdrawn
-    }
-
     /// The `earnings_realized` event emitted by the last call
     fn assert_earnings_realized(
         &self,
@@ -248,9 +242,7 @@ fn run_harvest_earnings_first(tier: ManagerTier) {
     let value_1 = h.position_value();
     let q2 = shares_1 / 2;
     let returned_2 = h.withdraw(q2);
-    let implied_1 = Harness::implied_value(shares_1, q2, returned_2);
-    assert!((implied_1 - value_1).abs() <= 2);
-    let earnings_2 = implied_1 - DEPOSIT;
+    let earnings_2 = value_1 - DEPOSIT;
     assert!(returned_2 > earnings_2 && earnings_2 > 0);
     h.assert_earnings_realized(returned_2 - earnings_2, earnings_2, earnings_2);
     assert_eq!(h.principal(), DEPOSIT - (returned_2 - earnings_2));
@@ -298,6 +290,26 @@ fn run_harvest_earnings_first(tier: ManagerTier) {
 
     // the manager's own principal tokens can't be harvested
     assert_eq!(h.client.harvest(&h.samwise, &h.lp().address), 0);
+}
+
+#[test]
+fn test_small_rounded_withdrawal_uses_exact_position_value() {
+    let h = Harness::new(ManagerTier::SecondLoss);
+    h.client.set_harvest_bps(&10_000);
+
+    // Establish a non-integral token-per-share rate. Withdrawing one share
+    // returns one token base unit after rounding, but the full position is
+    // worth substantially more than its principal.
+    let (tier_tokens, _) = h.tier_balance();
+    h.donate(tier_tokens / 2);
+    assert!(h.position_value() > h.principal());
+
+    let principal = h.principal();
+    let returned = h.withdraw(1);
+    assert_eq!(returned, 1);
+    h.assert_earnings_realized(0, returned, returned);
+    assert_eq!(h.principal(), principal);
+    assert_eq!(h.harvestable(), returned);
 }
 
 #[test]
@@ -388,10 +400,11 @@ fn test_harvest_after_loss() {
     h.donate(tier_tokens * 2);
     let principal = h.principal();
     let shares_1 = h.shares();
-    assert!(h.position_value() > principal);
+    let value_1 = h.position_value();
+    assert!(value_1 > principal);
     let q2 = shares_1 / 2;
     let returned_2 = h.withdraw(q2);
-    let earnings = Harness::implied_value(shares_1, q2, returned_2) - principal;
+    let earnings = value_1 - principal;
     assert!(returned_2 > earnings && earnings > 0);
     h.assert_earnings_realized(returned_2 - earnings, earnings, earnings);
     assert_eq!(h.principal(), principal - (returned_2 - earnings));

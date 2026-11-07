@@ -16,7 +16,7 @@ use soroban_sdk::{
     contract, contractimpl, panic_with_error,
     token::TokenClient,
     unwrap::UnwrapOptimized,
-    vec, Address, Env, IntoVal, Symbol, Vec,
+    vec, Address, Env, IntoVal, Symbol, Vec, I256,
 };
 
 const MAX_VALID_LIST_LEN: u32 = 4;
@@ -602,6 +602,11 @@ impl BackstopManager {
             pool: pool_address.clone(),
             tier,
         };
+        let tier_index = match tier {
+            BackstopTier::FirstLoss => 0,
+            BackstopTier::SecondLoss => 1,
+            BackstopTier::ThirdLoss => 2,
+        };
         let tier: backstop::BackstopTier = tier.into();
 
         let backstop_client = BackstopClient::new(&e, &backstop);
@@ -611,6 +616,20 @@ impl BackstopManager {
         for q4w in user_balance.q4w.iter() {
             position_shares += q4w.amount;
         }
+        let tier_data = backstop_client
+            .pool_data(&pool_address)
+            .tiers
+            .get(tier_index)
+            .unwrap_optimized();
+        let position_value = if position_shares == 0 || tier_data.shares == 0 {
+            0
+        } else {
+            I256::from_i128(&e, position_shares)
+                .mul(&I256::from_i128(&e, tier_data.tokens))
+                .div(&I256::from_i128(&e, tier_data.shares))
+                .to_i128()
+                .unwrap_or_else(|| panic_with_error!(&e, BackstopManagerErrors::OverflowError))
+        };
 
         let returned = backstop_client.withdraw(
             &tier,
@@ -622,7 +641,7 @@ impl BackstopManager {
 
         if returned > 0 {
             let token = backstop_client.backstop_token(&tier, &pool_address);
-            realize_earnings(&e, &position, &token, position_shares, amount, returned);
+            realize_earnings(&e, &position, &token, position_value, returned);
         }
         returned
     }
@@ -750,30 +769,20 @@ fn require_auth_with_scope(e: &Env, from: Address, scope: u32) {
 /// Split the tokens returned by a backstop withdrawal into earnings and principal,
 /// earnings first, and credit the manager its share of the earnings.
 ///
-/// The position is valued at the price per share the withdrawal used:
-/// `value = position_shares * returned / withdrawn_shares`, rounded down.
-///
 /// ### Arguments
 /// * `position` - The position withdrawn from
 /// * `token` - The LP token of the position
-/// * `position_shares` - The position's shares, including queued shares, before the withdrawal
-/// * `withdrawn_shares` - The shares withdrawn
+/// * `position_value` - The position's pre-withdrawal value from the tier's token/share totals
 /// * `returned` - The LP tokens returned by the withdrawal
 fn realize_earnings(
     e: &Env,
     position: &PositionKey,
     token: &Address,
-    position_shares: i128,
-    withdrawn_shares: i128,
+    position_value: i128,
     returned: i128,
 ) {
-    let value = position_shares
-        .checked_mul(returned)
-        .map(|v| v / withdrawn_shares)
-        .unwrap_or_else(|| panic_with_error!(e, BackstopManagerErrors::OverflowError));
-
     let principal = storage::get_principal(e, position);
-    let earnings = (value - principal).max(0);
+    let earnings = (position_value - principal).max(0);
     let earnings_part = returned.min(earnings);
     let principal_part = returned - earnings_part;
     storage::set_principal(e, position, (principal - principal_part).max(0));
