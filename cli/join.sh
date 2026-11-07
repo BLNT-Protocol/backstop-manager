@@ -6,7 +6,10 @@ header "Create LP tokens"
 
 lp=$(lp_token)
 supply=$(view "$lp" get_total_supply | num)
-mapfile -t tokens < <(view "$lp" get_tokens | jq -r '.[]')
+tokens=()
+while IFS= read -r token; do
+    tokens+=("$token")
+done < <(view "$lp" get_tokens | jq -r '.[]')
 
 # The most LP tokens the contract's balances can mint: Comet joins are
 # proportional, so the scarcest token sets the limit.

@@ -64,6 +64,15 @@ print(f"{Decimal(int(sys.argv[1])) / 10**7:,.7f}")
 PY
 }
 
+# Unix timestamp -> a stable UTC display, without relying on GNU or BSD date.
+fmt_timestamp() {
+    python3 - "$1" <<'PY'
+import sys
+from datetime import datetime, timezone
+print(datetime.fromtimestamp(int(sys.argv[1]), timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
+PY
+}
+
 # Human readable -> 7-decimal base units (1.5 -> 15000000)
 to_units() {
     python3 - "$1" <<'PY'

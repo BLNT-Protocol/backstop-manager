@@ -15,7 +15,7 @@ fi
 
 echo "Queued withdrawals:"
 while read -r amount exp; do
-    if (( exp <= now )); then status="ready"; else status="ready $(date -d "@$exp" '+%Y-%m-%d %H:%M')"; fi
+    if (( exp <= now )); then status="ready"; else status="ready at $(fmt_timestamp "$exp")"; fi
     echo "  $(fmt "$amount") shares: $status"
 done < <(jq -r '.q4w[] | "\(.amount) \(.exp)"' <<<"$ub")
 matured=$(jq -r --argjson now "$now" '.q4w[] | select(.exp <= $now) | .amount' <<<"$ub" | sum_lines)

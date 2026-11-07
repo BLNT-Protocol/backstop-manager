@@ -475,11 +475,20 @@ impl BackstopManager {
 
         let backstop_client = BackstopClient::new(&e, &backstop);
         let tier_token = backstop_client.backstop_token(&tier, &pool_address);
+        let token_client = TokenClient::new(&e, &tier_token);
+        let harvestable = storage::get_harvestable(&e, &tier_token);
+        let liquid_balance = token_client.balance(&e.current_contract_address());
+        let non_harvestable = (liquid_balance - harvestable).max(0);
+        let consumed_harvestable = if amount > non_harvestable {
+            (amount - non_harvestable).min(harvestable)
+        } else {
+            0
+        };
         e.authorize_as_current_contract(vec![
             &e,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: tier_token,
+                    contract: tier_token.clone(),
                     fn_name: Symbol::new(&e, "transfer"),
                     args: vec![
                         &e,
@@ -499,6 +508,9 @@ impl BackstopManager {
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(&e, BackstopManagerErrors::OverflowError));
         storage::set_principal(&e, &position, new_principal);
+        if consumed_harvestable > 0 {
+            storage::set_harvestable(&e, &tier_token, harvestable - consumed_harvestable);
+        }
         shares
     }
 

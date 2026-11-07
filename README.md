@@ -28,9 +28,10 @@ Manager actions are limited by scope. Their scope can be:
 * Medium - they can perform some management actions
 * High - they can perform all management actions
 
-All manager actions only allow funds to be held by the owner. They act
-on behalf of the owner with the funds held by the backstop manager
-contract.
+Manager actions operate on funds held by the backstop manager contract
+on behalf of the owner. Tokens sent out by manager actions go to the
+owner, except for the manager's accounted share of earnings paid by
+`harvest`.
 
 The manager can:
 * Refund tokens held by the manager contract to the owner (scope req. `Low`)

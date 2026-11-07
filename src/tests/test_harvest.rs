@@ -323,6 +323,48 @@ fn test_harvest_bps_share() {
 }
 
 #[test]
+fn test_redeposit_harvestable_turns_it_into_principal() {
+    let h = Harness::new(ManagerTier::SecondLoss);
+    let lp_token = TokenClient::new(&h.e, &h.lp().address);
+    h.client.set_harvest_bps(&10_000);
+
+    // Leave some non-harvestable LP tokens liquid so deposits can prove they
+    // consume owner liquidity before consuming the manager's earnings.
+    let liquid_balance = lp_token.balance(&h.client.address);
+    h.client
+        .transfer_token(&h.lp().address, &h.frodo, &(liquid_balance - DEPOSIT));
+
+    let (tier_tokens, _) = h.tier_balance();
+    h.donate(tier_tokens);
+    let returned = h.withdraw(h.shares() / 4);
+    assert_eq!(h.harvestable(), returned);
+    assert_eq!(lp_token.balance(&h.client.address), DEPOSIT + returned);
+
+    let principal = h.principal();
+    h.client.b_deposit(
+        &h.samwise,
+        &h.contracts.backstop.address,
+        &h.tier,
+        &h.pool,
+        &DEPOSIT,
+    );
+    assert_eq!(h.principal(), principal + DEPOSIT);
+    assert_eq!(h.harvestable(), returned);
+
+    h.client.b_deposit(
+        &h.samwise,
+        &h.contracts.backstop.address,
+        &h.tier,
+        &h.pool,
+        &returned,
+    );
+
+    assert_eq!(h.principal(), principal + DEPOSIT + returned);
+    assert_eq!(h.harvestable(), 0);
+    assert_eq!(h.client.harvest(&h.samwise, &h.lp().address), 0);
+}
+
+#[test]
 fn test_harvest_after_loss() {
     let h = Harness::new(ManagerTier::FirstLoss);
     h.client.set_harvest_bps(&10_000);
