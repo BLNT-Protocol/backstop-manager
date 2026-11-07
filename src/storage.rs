@@ -1,5 +1,7 @@
 use soroban_sdk::{contracttype, unwrap::UnwrapOptimized, Address, Env, Symbol, Vec};
 
+use crate::types::BackstopTier;
+
 /********** Storage Types **********/
 
 #[contracttype]
@@ -24,6 +26,25 @@ pub struct PendingOwner {
     pub timestamp: u64,
 }
 
+/// Identifies a backstop position held by the contract
+#[contracttype]
+#[derive(Clone)]
+pub struct PositionKey {
+    pub backstop: Address,
+    pub pool: Address,
+    pub tier: BackstopTier,
+}
+
+/// Persistent storage keys
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// LP tokens deposited into a position that have not been withdrawn
+    Principal(PositionKey),
+    /// LP tokens of a token owed to the manager
+    Harvest(Address),
+}
+
 /********** Ledger Thresholds **********/
 
 const ONE_DAY_LEDGERS: u32 = 17280; // assumes 5 seconds per ledger
@@ -38,6 +59,7 @@ const MANAGER_KEY: &str = "Manager";
 const BACKSTOPS_KEY: &str = "Bstop";
 const POOLS_KEY: &str = "Pools";
 const PENDING_OWNER_KEY: &str = "PendOwner";
+const HARVEST_BPS_KEY: &str = "HarvBps";
 
 /********** Ledger Thresholds **********/
 
@@ -133,4 +155,58 @@ pub fn set_valid_pools(e: &Env, pools: &Vec<Address>) {
     e.storage()
         .instance()
         .set::<Symbol, Vec<Address>>(&key, pools);
+}
+
+/// Get the manager's share of earnings, in basis points. Defaults to 0.
+pub fn get_harvest_bps(e: &Env) -> u32 {
+    e.storage()
+        .instance()
+        .get::<Symbol, u32>(&Symbol::new(e, HARVEST_BPS_KEY))
+        .unwrap_or(0)
+}
+
+/// Set the manager's share of earnings, in basis points
+pub fn set_harvest_bps(e: &Env, bps: u32) {
+    e.storage()
+        .instance()
+        .set::<Symbol, u32>(&Symbol::new(e, HARVEST_BPS_KEY), &bps);
+}
+
+/********** Persistent **********/
+
+fn get_persistent_i128(e: &Env, key: &DataKey) -> i128 {
+    let storage = e.storage().persistent();
+    match storage.get::<DataKey, i128>(key) {
+        Some(value) => {
+            storage.extend_ttl(key, LEDGER_THRESHOLD, LEDGER_BUMP);
+            value
+        }
+        None => 0,
+    }
+}
+
+fn set_persistent_i128(e: &Env, key: &DataKey, value: i128) {
+    let storage = e.storage().persistent();
+    storage.set::<DataKey, i128>(key, &value);
+    storage.extend_ttl(key, LEDGER_THRESHOLD, LEDGER_BUMP);
+}
+
+/// Get the principal of a position, in LP tokens. Defaults to 0.
+pub fn get_principal(e: &Env, position: &PositionKey) -> i128 {
+    get_persistent_i128(e, &DataKey::Principal(position.clone()))
+}
+
+/// Set the principal of a position, in LP tokens
+pub fn set_principal(e: &Env, position: &PositionKey, amount: i128) {
+    set_persistent_i128(e, &DataKey::Principal(position.clone()), amount);
+}
+
+/// Get the amount of a token owed to the manager. Defaults to 0.
+pub fn get_harvestable(e: &Env, token: &Address) -> i128 {
+    get_persistent_i128(e, &DataKey::Harvest(token.clone()))
+}
+
+/// Set the amount of a token owed to the manager
+pub fn set_harvestable(e: &Env, token: &Address, amount: i128) {
+    set_persistent_i128(e, &DataKey::Harvest(token.clone()), amount);
 }

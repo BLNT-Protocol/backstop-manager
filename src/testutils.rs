@@ -32,6 +32,9 @@ pub mod v3 {
 /// The manager's `BackstopTier`, as used by the manager client
 pub use contract::BackstopTier as ManagerTier;
 
+/// Client for the backstop manager wasm
+pub use contract::Client as ManagerClient;
+
 /// Convert a manager tier into the backstop's tier type
 pub fn bstop_tier(tier: &ManagerTier) -> BackstopTier {
     match tier {

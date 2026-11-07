@@ -4,8 +4,11 @@ use crate::{
         comet::Client as CometClient,
     },
     errors::BackstopManagerErrors,
-    events::{OwnerAccepted, OwnerCancelled, OwnerProposed},
-    storage::{self, Manager, PendingOwner},
+    events::{
+        EarningsRealized, Harvest, HarvestBpsSet, HarvestableSet, OwnerAccepted, OwnerCancelled,
+        OwnerProposed, PrincipalSet,
+    },
+    storage::{self, Manager, PendingOwner, PositionKey},
     types::BackstopTier,
 };
 use soroban_sdk::{
@@ -13,13 +16,16 @@ use soroban_sdk::{
     contract, contractimpl, panic_with_error,
     token::TokenClient,
     unwrap::UnwrapOptimized,
-    vec, Address, Env, IntoVal, Symbol, Vec,
+    vec, Address, Env, IntoVal, Symbol, Vec, I256,
 };
 
 const MAX_VALID_LIST_LEN: u32 = 4;
 
 /// How long an owner proposal can be accepted for, in seconds (one week)
 const OWNER_PROPOSAL_EXPIRY: u64 = 7 * 24 * 60 * 60;
+
+/// The denominator for `harvest_bps`
+const MAX_BPS: u32 = 10_000;
 
 #[contract]
 pub struct BackstopManager;
@@ -87,6 +93,28 @@ impl BackstopManager {
     /// until it is replaced or cancelled.
     pub fn pending_owner(e: Env) -> Option<PendingOwner> {
         storage::get_pending_owner(&e)
+    }
+
+    /// Get the manager's share of earnings, in basis points
+    pub fn harvest_bps(e: Env) -> u32 {
+        storage::get_harvest_bps(&e)
+    }
+
+    /// Get the principal of a backstop position, in LP tokens
+    pub fn principal(e: Env, backstop: Address, pool: Address, tier: BackstopTier) -> i128 {
+        storage::get_principal(
+            &e,
+            &PositionKey {
+                backstop,
+                pool,
+                tier,
+            },
+        )
+    }
+
+    /// Get the amount of a token owed to the manager
+    pub fn harvestable(e: Env, token: Address) -> i128 {
+        storage::get_harvestable(&e, &token)
     }
 
     /// Get the backstops this contract can interact with
@@ -248,7 +276,123 @@ impl BackstopManager {
         storage::set_valid_pools(&e, &pools);
     }
 
+    /// (Only Owner) Set the manager's share of earnings realized by `b_withdraw`
+    ///
+    /// ### Arguments
+    /// * `bps` - The manager's share, in basis points (0 to 10000)
+    ///
+    /// ### Errors
+    /// * InvalidBps - `bps` is greater than 10000
+    pub fn set_harvest_bps(e: Env, bps: u32) {
+        let owner = storage::get_owner(&e);
+        owner.require_auth();
+        storage::extend_instance(&e);
+
+        if bps > MAX_BPS {
+            panic_with_error!(&e, BackstopManagerErrors::InvalidBps);
+        }
+        storage::set_harvest_bps(&e, bps);
+        HarvestBpsSet { bps }.publish(&e);
+    }
+
+    /// (Only Owner) Set the principal of a backstop position, in LP tokens
+    ///
+    /// ### Arguments
+    /// * `backstop` - The address of the backstop contract
+    /// * `pool` - The address of the pool
+    /// * `tier` - The backstop tier
+    /// * `amount` - The principal, in LP tokens
+    ///
+    /// ### Errors
+    /// * NegativeAmountError - `amount` is negative
+    pub fn set_principal(
+        e: Env,
+        backstop: Address,
+        pool: Address,
+        tier: BackstopTier,
+        amount: i128,
+    ) {
+        let owner = storage::get_owner(&e);
+        owner.require_auth();
+        storage::extend_instance(&e);
+
+        if amount < 0 {
+            panic_with_error!(&e, BackstopManagerErrors::NegativeAmountError);
+        }
+        storage::set_principal(
+            &e,
+            &PositionKey {
+                backstop: backstop.clone(),
+                pool: pool.clone(),
+                tier,
+            },
+            amount,
+        );
+        PrincipalSet {
+            backstop,
+            pool,
+            tier,
+            amount,
+        }
+        .publish(&e);
+    }
+
+    /// (Only Owner) Set the amount of a token owed to the manager
+    ///
+    /// ### Arguments
+    /// * `token` - The address of the token
+    /// * `amount` - The amount owed to the manager
+    ///
+    /// ### Errors
+    /// * NegativeAmountError - `amount` is negative
+    pub fn set_harvestable(e: Env, token: Address, amount: i128) {
+        let owner = storage::get_owner(&e);
+        owner.require_auth();
+        storage::extend_instance(&e);
+
+        if amount < 0 {
+            panic_with_error!(&e, BackstopManagerErrors::NegativeAmountError);
+        }
+        storage::set_harvestable(&e, &token, amount);
+        HarvestableSet { token, amount }.publish(&e);
+    }
+
     /********** Manager **********/
+
+    /// (Manager, Low) Transfer the manager's harvestable balance of a token to the manager.
+    ///
+    /// Pays the smaller of the harvestable balance and the contract's balance of the token,
+    /// and returns the amount paid. Tokens always go to the manager, even if the owner calls.
+    ///
+    /// ### Arguments
+    /// * `from` - The caller of the function
+    /// * `token` - The address of the token to harvest
+    pub fn harvest(e: Env, from: Address, token: Address) -> i128 {
+        require_auth_with_scope(&e, from, 0);
+        storage::extend_instance(&e);
+
+        let harvestable = storage::get_harvestable(&e, &token);
+        if harvestable <= 0 {
+            return 0;
+        }
+        let token_client = TokenClient::new(&e, &token);
+        let balance = token_client.balance(&e.current_contract_address());
+        let amount = harvestable.min(balance);
+        if amount <= 0 {
+            return 0;
+        }
+
+        let manager = storage::get_manager(&e).id;
+        storage::set_harvestable(&e, &token, harvestable - amount);
+        token_client.transfer(&e.current_contract_address(), &manager, &amount);
+        Harvest {
+            token,
+            manager,
+            amount,
+        }
+        .publish(&e);
+        amount
+    }
 
     /// (Manager, Low) Transfer tokens from the contract back to the owner
     ///
@@ -322,15 +466,29 @@ impl BackstopManager {
         require_auth_with_scope(&e, from, 1);
         require_backstop_and_pool_valid(&e, &backstop, &pool_address);
         storage::extend_instance(&e);
+        let position = PositionKey {
+            backstop: backstop.clone(),
+            pool: pool_address.clone(),
+            tier,
+        };
         let tier: backstop::BackstopTier = tier.into();
 
         let backstop_client = BackstopClient::new(&e, &backstop);
         let tier_token = backstop_client.backstop_token(&tier, &pool_address);
+        let token_client = TokenClient::new(&e, &tier_token);
+        let harvestable = storage::get_harvestable(&e, &tier_token);
+        let liquid_balance = token_client.balance(&e.current_contract_address());
+        let non_harvestable = (liquid_balance - harvestable).max(0);
+        let consumed_harvestable = if amount > non_harvestable {
+            (amount - non_harvestable).min(harvestable)
+        } else {
+            0
+        };
         e.authorize_as_current_contract(vec![
             &e,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: tier_token,
+                    contract: tier_token.clone(),
                     fn_name: Symbol::new(&e, "transfer"),
                     args: vec![
                         &e,
@@ -342,7 +500,18 @@ impl BackstopManager {
                 sub_invocations: vec![&e],
             }),
         ]);
-        backstop_client.deposit(&tier, &e.current_contract_address(), &pool_address, &amount)
+        let shares =
+            backstop_client.deposit(&tier, &e.current_contract_address(), &pool_address, &amount);
+
+        let principal = storage::get_principal(&e, &position);
+        let new_principal = principal
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&e, BackstopManagerErrors::OverflowError));
+        storage::set_principal(&e, &position, new_principal);
+        if consumed_harvestable > 0 {
+            storage::set_harvestable(&e, &tier_token, harvestable - consumed_harvestable);
+        }
+        shares
     }
 
     /// (Manager, Medium) Queue deposited pool shares from the contract for withdraw from a tier of a pool's backstop
@@ -405,7 +574,9 @@ impl BackstopManager {
 
     /// (Manager, High) Withdraw shares from the contract's withdraw queue for a tier of a pool's backstop
     ///
-    /// The withdrawn tokens are always sent to this contract.
+    /// The withdrawn tokens are always sent to this contract. They are counted as earnings
+    /// (position value above principal) first, and the manager's `harvest_bps` share of the
+    /// earnings is added to its harvestable balance. The rest reduces principal.
     ///
     /// Returns the amount of tokens returned
     ///
@@ -426,15 +597,53 @@ impl BackstopManager {
         require_auth_with_scope(&e, from, 2);
         require_backstop_and_pool_valid(&e, &backstop, &pool_address);
         storage::extend_instance(&e);
+        let position = PositionKey {
+            backstop: backstop.clone(),
+            pool: pool_address.clone(),
+            tier,
+        };
+        let tier_index = match tier {
+            BackstopTier::FirstLoss => 0,
+            BackstopTier::SecondLoss => 1,
+            BackstopTier::ThirdLoss => 2,
+        };
         let tier: backstop::BackstopTier = tier.into();
 
-        BackstopClient::new(&e, &backstop).withdraw(
+        let backstop_client = BackstopClient::new(&e, &backstop);
+        let user_balance =
+            backstop_client.user_balance(&tier, &pool_address, &e.current_contract_address());
+        let mut position_shares = user_balance.shares;
+        for q4w in user_balance.q4w.iter() {
+            position_shares += q4w.amount;
+        }
+        let tier_data = backstop_client
+            .pool_data(&pool_address)
+            .tiers
+            .get(tier_index)
+            .unwrap_optimized();
+        let position_value = if position_shares == 0 || tier_data.shares == 0 {
+            0
+        } else {
+            I256::from_i128(&e, position_shares)
+                .mul(&I256::from_i128(&e, tier_data.tokens))
+                .div(&I256::from_i128(&e, tier_data.shares))
+                .to_i128()
+                .unwrap_or_else(|| panic_with_error!(&e, BackstopManagerErrors::OverflowError))
+        };
+
+        let returned = backstop_client.withdraw(
             &tier,
             &e.current_contract_address(),
             &pool_address,
             &amount,
             &e.current_contract_address(),
-        )
+        );
+
+        if returned > 0 {
+            let token = backstop_client.backstop_token(&tier, &pool_address);
+            realize_earnings(&e, &position, &token, position_value, returned);
+        }
+        returned
     }
 
     /***** Backstop Token Interactions *****/
@@ -555,6 +764,47 @@ fn require_auth_with_scope(e: &Env, from: Address, scope: u32) {
     if manager.id != from || manager.scope < scope {
         panic_with_error!(&e, BackstopManagerErrors::UnauthorizedError);
     }
+}
+
+/// Split the tokens returned by a backstop withdrawal into earnings and principal,
+/// earnings first, and credit the manager its share of the earnings.
+///
+/// ### Arguments
+/// * `position` - The position withdrawn from
+/// * `token` - The LP token of the position
+/// * `position_value` - The position's pre-withdrawal value from the tier's token/share totals
+/// * `returned` - The LP tokens returned by the withdrawal
+fn realize_earnings(
+    e: &Env,
+    position: &PositionKey,
+    token: &Address,
+    position_value: i128,
+    returned: i128,
+) {
+    let principal = storage::get_principal(e, position);
+    let earnings = (position_value - principal).max(0);
+    let earnings_part = returned.min(earnings);
+    let principal_part = returned - earnings_part;
+    storage::set_principal(e, position, (principal - principal_part).max(0));
+
+    let manager_part = earnings_part
+        .checked_mul(storage::get_harvest_bps(e) as i128)
+        .map(|v| v / MAX_BPS as i128)
+        .unwrap_or_else(|| panic_with_error!(e, BackstopManagerErrors::OverflowError));
+    if manager_part > 0 {
+        let harvestable = storage::get_harvestable(e, token);
+        storage::set_harvestable(e, token, harvestable + manager_part);
+    }
+
+    EarningsRealized {
+        backstop: position.backstop.clone(),
+        pool: position.pool.clone(),
+        tier: position.tier,
+        principal_part,
+        earnings_part,
+        manager_part,
+    }
+    .publish(e);
 }
 
 /// Validate that the backstop and pool address are included in the valid lists
