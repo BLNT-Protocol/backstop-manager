@@ -10,6 +10,7 @@ ops=(
     "queue.sh|Queue shares for withdrawal (Medium)"
     "withdraw.sh|Withdraw queued shares (High)"
     "harvest.sh|Harvest earnings to the manager (Low)"
+    "fund.sh|Send LP or underlying tokens from the signer to the contract (anyone)"
 )
 
 while true; do

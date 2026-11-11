@@ -35,5 +35,12 @@ in tokens (7 decimals).
 | 4 | `queue.sh` | Queue shares for withdrawal. Defaults to the shares worth the position's earnings, less shares already queued. | Medium |
 | 5 | `withdraw.sh` | Withdraw queued shares whose 17-day queue has ended. Earnings among them become harvestable. | High |
 | 6 | `harvest.sh` | Pay the manager its harvestable LP tokens. | Low |
+| 7 | `fund.sh` | Send the tier's LP tokens, or its underlying tokens, from the signer's account to the contract. Defaults to the signer's whole balance. A plain token transfer, so any account can fund. | Any |
 
-To collect earnings: queue (4), wait 17 days, withdraw (5), harvest (6).
+To start a position: fund (7) with LP tokens, then deposit (2); or fund with
+the underlying tokens, join (1), then deposit (2).
+
+To collect earnings: queue (4), wait 17 days, withdraw (5), harvest (6). Only
+the earnings become harvestable; the principal stays in the contract. A
+manager with High scope can run all four steps; with a lower scope the owner
+has to queue and withdraw before the manager can harvest.
