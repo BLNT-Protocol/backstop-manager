@@ -13,6 +13,7 @@ ops=(
     "fund.sh|Send LP or underlying tokens from the signer to the contract (anyone)"
     "single.sh|Single-sided join from the signer's account, then send the LP to the contract (anyone)"
     "balances.sh|Show balances, earnings and claimable emissions (read-only)"
+    "version.sh|Show the deployed contract's WASM hash and version (read-only)"
 )
 
 while true; do
@@ -25,7 +26,7 @@ while true; do
     read -r -p "Choose an operation: " choice || exit 0
     case "$choice" in
         q | Q) exit 0 ;;
-        [1-9])
+        [1-9] | [1-9][0-9])
             if (( choice <= ${#ops[@]} )); then
                 bash "$CLI_DIR/${ops[choice - 1]%%|*}" || echo "Operation failed."
             else
