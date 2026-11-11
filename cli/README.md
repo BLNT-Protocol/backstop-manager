@@ -36,6 +36,7 @@ in tokens (7 decimals).
 | 5 | `withdraw.sh` | Withdraw queued shares whose 17-day queue has ended. Earnings among them become harvestable. | High |
 | 6 | `harvest.sh` | Pay the manager its harvestable LP tokens. | Low |
 | 7 | `fund.sh` | Send the tier's LP tokens, or its underlying tokens, from the signer's account to the contract. Defaults to the signer's whole balance. A plain token transfer, so any account can fund. | Any |
+| 8 | `balances.sh` | Show the tokens the contract holds and what is harvestable, the backstop position (shares, queued withdrawals, value, principal, accrued earnings and the manager's share), and claimable emissions from a simulated claim. Read-only. | Any |
 
 To start a position: fund (7) with LP tokens, then deposit (2); or fund with
 the underlying tokens, join (1), then deposit (2).
