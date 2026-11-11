@@ -11,6 +11,7 @@ ops=(
     "withdraw.sh|Withdraw queued shares (High)"
     "harvest.sh|Harvest earnings to the manager (Low)"
     "fund.sh|Send LP or underlying tokens from the signer to the contract (anyone)"
+    "single.sh|Single-sided join from the signer's account, then send the LP to the contract (anyone)"
     "balances.sh|Show balances, earnings and claimable emissions (read-only)"
 )
 

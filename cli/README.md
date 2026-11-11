@@ -36,10 +36,14 @@ in tokens (7 decimals).
 | 5 | `withdraw.sh` | Withdraw queued shares whose 17-day queue has ended. Earnings among them become harvestable. | High |
 | 6 | `harvest.sh` | Pay the manager its harvestable LP tokens. | Low |
 | 7 | `fund.sh` | Send the tier's LP tokens, or its underlying tokens, from the signer's account to the contract. Defaults to the signer's whole balance. A plain token transfer, so any account can fund. | Any |
-| 8 | `balances.sh` | Show the tokens the contract holds and what is harvestable, the backstop position (shares, queued withdrawals, value, principal, accrued earnings and the manager's share), and claimable emissions from a simulated claim. Read-only. | Any |
+| 8 | `single.sh` | Single-sided join: mint the tier's LP tokens from just one underlying token (e.g. only BLNT), from the signer's own account, then optionally send them to the contract. Simulates first, shows the fee and price impact, and sets the minimum LP out less `SLIPPAGE_BPS`. Comet caps one join at about a third of the pool's balance of the token. If the signer is the owner, it can first pull that token out of the contract (`transfer_token`). | Any (pulling from the contract: owner) |
+| 9 | `balances.sh` | Show the tokens the contract holds and what is harvestable, the backstop position (shares, queued withdrawals, value, principal, accrued earnings and the manager's share), and claimable emissions from a simulated claim. Read-only. | Any |
 
 To start a position: fund (7) with LP tokens, then deposit (2); or fund with
-the underlying tokens, join (1), then deposit (2).
+the underlying tokens, join (1), then deposit (2). With only one of the
+underlying tokens (e.g. only BLNT), use single-sided join (8), which sends
+the LP tokens to the contract, then deposit (2). Join (1) can't do this:
+the contract only supports proportional joins.
 
 To collect earnings: queue (4), wait 17 days, withdraw (5), harvest (6). Only
 the earnings become harvestable; the principal stays in the contract. A
