@@ -53,6 +53,26 @@ else
 fi
 echo "  Manager's share at $bps bps: $(fmt "$(calc "a * b // 10000" "$earnings" "$bps")")"
 
+# Suggested weekly queue: earnings not yet covered by shares already queued.
+# Withdrawals pay out earnings first, so queueing no more than this keeps
+# principal intact. Shares are rounded down so the queue never exceeds earnings.
+queued_value=0
+suggested=0
+if [[ "$tier_shares" != "0" ]]; then
+    queued_value=$(calc "a * b // c" "$queued" "$tier_tokens" "$tier_shares")
+    uncovered=$(calc "max(a - b, 0)" "$earnings" "$queued_value")
+    suggested=$(calc "a * c // b" "$uncovered" "$tier_tokens" "$tier_shares")
+fi
+echo
+echo "Suggested weekly queue (claim emissions first so they count as earnings):"
+echo "  Earnings $(fmt "$earnings") - already queued $(fmt "$queued_value") LP"
+if [[ "$suggested" == "0" ]]; then
+    echo "  Queue nothing: shares already queued cover all earnings"
+    echo "  (queued value above earnings: $(fmt "$(calc "max(b - a, 0)" "$earnings" "$queued_value")") LP of principal)"
+else
+    echo "  Queue $(fmt "$suggested") shares"
+fi
+
 # Emissions have no view function; simulate the claim to see what it would mint
 echo
 if claimable=$(view "$MANAGER_ID" b_claim --from "$FROM" --backstop "$BACKSTOP_ID" --tier "$TIER" \
