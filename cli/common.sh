@@ -25,17 +25,32 @@ esac
 
 FROM="$(stellar keys address "$SOURCE")"
 
+# Run stellar, keeping its stderr quiet on success. `--quiet` can't be used:
+# stellar-cli 30 suppresses the error message too, so failures were silent.
+_stellar() {
+    local err rc=0 fn="" arg prev=""
+    for arg in "$@"; do [[ "$prev" == "--" ]] && { fn="$arg"; break; }; prev="$arg"; done
+    err="$(mktemp)"
+    stellar "$@" 2>"$err" || rc=$?
+    if (( rc != 0 )); then
+        echo "${fn:-stellar} call failed (exit $rc):" >&2
+        grep -iE 'error|fail' "$err" >&2 || cat "$err" >&2
+    fi
+    rm -f "$err"
+    return "$rc"
+}
+
 # Read-only call: simulate only and print the result
 view() {
     local id="$1"; shift
-    stellar contract invoke --quiet --send=no --network "$NETWORK" --source "$SOURCE" \
+    _stellar contract invoke --send=no --network "$NETWORK" --source "$SOURCE" \
         --id "$id" -- "$@"
 }
 
 # State-changing call: sign with SOURCE and submit
 invoke() {
     local id="$1"; shift
-    stellar contract invoke --quiet --send=yes --network "$NETWORK" --source "$SOURCE" \
+    _stellar contract invoke --send=yes --network "$NETWORK" --source "$SOURCE" \
         --id "$id" -- "$@"
 }
 

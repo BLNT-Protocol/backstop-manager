@@ -88,8 +88,7 @@ if ! expected=$(view "$lp" dep_tokn_amt_in_get_lp_tokns_out --token_in "$token" 
     --token_amount_in "$amount" --min_pool_amount_out 0 --user "$FROM" | num) \
     || [[ -z "$expected" ]]; then
     echo "Simulating the join failed. If the token is a classic asset, open DEX offers" >&2
-    echo "may lock part of the balance (selling liabilities): try a smaller amount, or" >&2
-    echo "rerun the call without --quiet to see the error." >&2
+    echo "may lock part of the balance (selling liabilities): try a smaller amount." >&2
     exit 1
 fi
 min_out=$(calc "a * (10000 - b) // 10000" "$expected" "$SLIPPAGE_BPS")
